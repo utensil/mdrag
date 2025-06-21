@@ -1,0 +1,20 @@
+[package]
+name = "markdown-rag"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.98"
+env_logger = "0.11.8"
+glob = "0.3.2"
+log = "0.4.27"
+ollama-rs = { version = "0.3.1", features = ["stream"] }
+regex = "1.11.1"
+reqwest = { version = "0.12.20", features = ["json"] }
+rusqlite = { version = "0.36.0", features = ["bundled"] }
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.140"
+sqlite-vec = "0.1.6"
+tokio = { version = "1.45.1", features = ["full"] }
+tokio-stream = "0.1.17"
+zerocopy = "0.8.26"
