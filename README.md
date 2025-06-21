@@ -2,6 +2,8 @@
 
 A local RAG (Retrieval Augmented Generation) system for chatting with your Obsidian vault using Rust and local AI models.
 
+You can read more about this project in my [blog post](https://orellazri.com/posts/rag-pipeline-chat-with-my-obsidian-vault/).
+
 ## Features
 
 - **Local-first**: Runs entirely offline, keeping your notes private
