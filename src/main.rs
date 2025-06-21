@@ -15,7 +15,7 @@ mod markdown;
 
 #[derive(Parser)]
 #[command(name = "mdrag")]
-#[command(about = "A markdown RAG sysem")]
+#[command(about = "RAG Pipeline for Markdown Files")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
