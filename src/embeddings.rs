@@ -2,7 +2,7 @@ use std::{fs, path::Path};
 
 use anyhow::Result;
 use glob::glob;
-use log::debug;
+use log::{debug, info};
 use ollama_rs::{Ollama, generation::embeddings::request::GenerateEmbeddingsRequest};
 use rusqlite::Connection;
 use zerocopy::IntoBytes;
@@ -37,9 +37,30 @@ impl<'a> Embedder<'a> {
     }
 
     pub async fn embed_dir(&self, path: impl AsRef<Path>) -> Result<()> {
-        for entry in glob(&path.as_ref().join("**/*.md").to_string_lossy())? {
-            let path = entry?;
-            self.embed_file(&path).await?;
+        let files: Vec<_> = glob(&path.as_ref().join("**/*.md").to_string_lossy())?
+            .collect::<Result<Vec<_>, _>>()?;
+        
+        let total = files.len();
+        let start_time = std::time::Instant::now();
+        
+        info!("Found {} markdown files to process", total);
+        
+        for (idx, file_path) in files.iter().enumerate() {
+            let completed = idx + 1;
+            let elapsed = start_time.elapsed().as_secs_f64();
+            let rate = completed as f64 / elapsed;
+            let remaining = total - completed;
+            let eta_secs = if rate > 0.0 { remaining as f64 / rate } else { 0.0 };
+            
+            info!(
+                "[{}/{}] Processing: {} (ETA: {:.0}s)",
+                completed,
+                total,
+                file_path.display(),
+                eta_secs
+            );
+            
+            self.embed_file(file_path).await?;
         }
 
         Ok(())
