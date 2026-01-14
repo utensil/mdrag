@@ -100,6 +100,11 @@ impl MarkdownParser {
                 end = start + MAX_TOKEN_ESTIMATE;
             }
 
+            // Ensure we're at a char boundary
+            while end < cleaned.len() && !cleaned.is_char_boundary(end) {
+                end -= 1;
+            }
+
             let actual_end = if end < cleaned.len() {
                 cleaned[start..end]
                     .rfind('\n')
