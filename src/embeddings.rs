@@ -21,6 +21,7 @@ impl<'a> Embedder<'a> {
             "CREATE VIRTUAL TABLE IF NOT EXISTS file_embeddings USING vec0(
             path TEXT,
             contents TEXT,
+            model TEXT,
             embedding FLOAT[768]
         )",
             [],
@@ -29,15 +30,14 @@ impl<'a> Embedder<'a> {
         Ok(Self { conn, ollama })
     }
 
-    pub async fn generate_embeddings(&self, text: &str) -> Result<Vec<Vec<f32>>> {
-        let request =
-            GenerateEmbeddingsRequest::new("nomic-embed-text:v1.5".to_string(), text.into());
+    pub async fn generate_embeddings(&self, text: &str, model: &str) -> Result<Vec<Vec<f32>>> {
+        let request = GenerateEmbeddingsRequest::new(model.to_string(), text.into());
         let response = self.ollama.generate_embeddings(request).await?;
 
         Ok(response.embeddings)
     }
 
-    pub async fn embed_dir(&self, path: impl AsRef<Path>) -> Result<()> {
+    pub async fn embed_dir(&self, path: impl AsRef<Path>, model: &str) -> Result<()> {
         let files: Vec<_> = glob(&path.as_ref().join("**/*.md").to_string_lossy())?
             .collect::<Result<Vec<_>, _>>()?;
         
@@ -53,7 +53,7 @@ impl<'a> Embedder<'a> {
         
         for file_path in files.iter() {
             pb.set_message(format!("{}", file_path.display()));
-            self.embed_file(file_path).await?;
+            self.embed_file(file_path, model).await?;
             pb.inc(1);
         }
         
@@ -61,16 +61,16 @@ impl<'a> Embedder<'a> {
         Ok(())
     }
 
-    pub async fn embed_file(&self, path: impl AsRef<Path>) -> Result<()> {
+    pub async fn embed_file(&self, path: impl AsRef<Path>, model: &str) -> Result<()> {
         let path_str = path.as_ref().to_string_lossy().to_string();
 
-        // Check if file already has embeddings
+        // Check if file already has embeddings with this model
         let mut stmt = self
             .conn
-            .prepare("SELECT COUNT(*) FROM file_embeddings WHERE path = ?")?;
-        let count: i64 = stmt.query_row((&path_str,), |row| row.get(0))?;
+            .prepare("SELECT COUNT(*) FROM file_embeddings WHERE path = ? AND model = ?")?;
+        let count: i64 = stmt.query_row((&path_str, model), |row| row.get(0))?;
         if count > 0 {
-            debug!("File already embedded, skipping: {}", path_str);
+            debug!("File already embedded with model {}, skipping: {}", model, path_str);
             return Ok(());
         }
 
@@ -88,7 +88,7 @@ impl<'a> Embedder<'a> {
                 continue;
             }
             // Try to embed, but skip if it fails (chunk too dense)
-            if let Err(e) = self.embed_chunk(&path_str, &chunk).await {
+            if let Err(e) = self.embed_chunk(&path_str, &chunk, model).await {
                 debug!("Skipping chunk {} from {} due to error: {}", i, &path_str, e);
                 continue;
             }
@@ -97,20 +97,20 @@ impl<'a> Embedder<'a> {
         Ok(())
     }
 
-    async fn embed_chunk(&self, file_path: &str, chunk: &str) -> Result<()> {
-        let embeddings = self.generate_embeddings(chunk).await?;
+    async fn embed_chunk(&self, file_path: &str, chunk: &str, model: &str) -> Result<()> {
+        let embeddings = self.generate_embeddings(chunk, model).await?;
 
         let mut stmt = self
             .conn
-            .prepare("INSERT INTO file_embeddings (path, contents, embedding) VALUES (?, ?, ?)")?;
+            .prepare("INSERT INTO file_embeddings (path, contents, model, embedding) VALUES (?, ?, ?, ?)")?;
 
-        stmt.execute((file_path, chunk, embeddings[0].as_bytes()))?;
+        stmt.execute((file_path, chunk, model, embeddings[0].as_bytes()))?;
 
         Ok(())
     }
 
-    pub async fn search(&self, query: &str, k: usize) -> Result<Vec<String>> {
-        let query_embedding = self.generate_embeddings(query).await?;
+    pub async fn search(&self, query: &str, k: usize, model: &str) -> Result<Vec<String>> {
+        let query_embedding = self.generate_embeddings(query, model).await?;
 
         let mut stmt = self.conn.prepare(
             "SELECT contents

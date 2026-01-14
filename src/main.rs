@@ -26,10 +26,14 @@ enum Commands {
     Embed {
         #[arg(value_name = "VAULT_PATH")]
         vault_path: String,
+        #[arg(long, default_value = "nomic-embed-text:v1.5")]
+        model: String,
     },
     Search {
         #[arg(value_name = "QUERY")]
         query: String,
+        #[arg(long, default_value = "nomic-embed-text:v1.5")]
+        model: String,
     },
 }
 
@@ -49,15 +53,15 @@ async fn main() -> Result<()> {
     let embedder = Embedder::new(&db, &ollama)?;
 
     match &cli.command {
-        Commands::Embed { vault_path } => {
-            info!("Embedding files from directory: {}", vault_path);
-            embedder.embed_dir(vault_path).await?;
+        Commands::Embed { vault_path, model } => {
+            info!("Embedding files from directory: {} with model: {}", vault_path, model);
+            embedder.embed_dir(vault_path, model).await?;
             info!("Embedding completed successfully!");
         }
-        Commands::Search { query } => {
-            info!("Searching for: {}", query);
+        Commands::Search { query, model } => {
+            info!("Searching for: {} with model: {}", query, model);
 
-            let results = embedder.search(&query, 5).await?;
+            let results = embedder.search(&query, 5, model).await?;
             debug!("Results: {:?}", results);
 
             let model = "gemma3:1b".to_string();
