@@ -21,24 +21,52 @@ impl<'a> Embedder<'a> {
         Ok(Self { conn, ollama })
     }
     
-    // AGENT-NOTE: Abbreviation rules for table names
-    // - Remove common prefixes: "embedding", "embed", "text"
-    // - Keep vendor name and version
+    // AGENT-NOTE: Table naming rules
+    // 1. Remove common prefixes/suffixes: "embed", "embedding", "text"
+    // 2. Extract name: first 6 chars (or until non-alphanumeric)
+    // 3. Extract version: strip non-alphanumeric
+    // 4. Format: emb_{name}_{version} with no consecutive underscores
     // Examples:
     //   nomic-embed-text:v1.5    → emb_nomic_v15
     //   qwen3-embedding:4b       → emb_qwen3_4b
     //   embeddinggemma:latest    → emb_gemma_latest
     fn get_table_name(model: &str) -> String {
-        let name = model
-            .replace("embedding", "")
-            .replace("embed", "")
-            .replace("-text", "")
-            .replace("nomic-", "nomic_")
-            .replace(":", "_")
-            .replace("-", "")
-            .replace(".", "");
+        // Remove common prefixes/suffixes
+        let mut cleaned = model.to_string();
+        cleaned = cleaned.replace("embedding", "");
+        cleaned = cleaned.replace("embed", "");
+        cleaned = cleaned.replace("text", "");
+        cleaned = cleaned.replace("-", "");
+        cleaned = cleaned.trim_matches('-').to_string();
         
-        format!("emb_{}", name.trim_matches('_'))
+        // Split by colon to separate name and version
+        let parts: Vec<&str> = cleaned.split(':').collect();
+        
+        // Extract name (first 6 alphanumeric chars)
+        let name = parts[0]
+            .chars()
+            .filter(|c| c.is_alphanumeric())
+            .take(6)
+            .collect::<String>()
+            .to_lowercase();
+        
+        // Extract version (strip non-alphanumeric)
+        let version = if parts.len() > 1 {
+            parts[1]
+                .chars()
+                .filter(|c| c.is_alphanumeric())
+                .collect::<String>()
+                .to_lowercase()
+        } else {
+            String::new()
+        };
+        
+        // Build table name with no consecutive underscores
+        if version.is_empty() {
+            format!("emb_{}", name)
+        } else {
+            format!("emb_{}_{}", name, version)
+        }
     }
     
     fn ensure_table_for_model(&self, model: &str, dimension: usize) -> Result<()> {
