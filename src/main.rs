@@ -78,9 +78,9 @@ enum Commands {
         #[arg(value_name = "QUERY")]
         query: String,
         #[arg(long)]
-        embed_model: Option<String>,
+        rag_model: Option<String>,
         #[arg(long)]
-        llm_model: Option<String>,
+        chat_model: Option<String>,
     },
 }
 
@@ -116,8 +116,8 @@ async fn main() -> Result<()> {
             embedder.embed_dir(vault_path, &embed_model).await?;
             info!("Embedding completed successfully!");
         }
-        Commands::Search { query, embed_model, llm_model } => {
-            let embed = match embed_model {
+        Commands::Search { query, rag_model, chat_model } => {
+            let embed = match rag_model {
                 Some(m) => m.clone(),
                 None => {
                     if !check_model_available(&ollama, SUPPORTED_EMBED_MODELS[0]).await? {
@@ -128,7 +128,7 @@ async fn main() -> Result<()> {
                 }
             };
             
-            let llm = match llm_model {
+            let llm = match chat_model {
                 Some(m) => m.clone(),
                 None => {
                     if !check_model_available(&ollama, SUPPORTED_LLM_MODELS[0]).await? {
