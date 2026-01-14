@@ -162,12 +162,43 @@ async fn main() -> Result<()> {
                 .await?;
 
             let mut stdout = io::stdout();
+            let start_time = std::time::Instant::now();
+            let mut first_token_time: Option<std::time::Duration> = None;
+            let mut token_count = 0;
+            let mut char_count = 0;
+            
             while let Some(res) = stream.next().await {
                 let responses = res?;
                 for resp in responses {
+                    if first_token_time.is_none() && !resp.response.is_empty() {
+                        first_token_time = Some(start_time.elapsed());
+                    }
+                    
                     stdout.write_all(resp.response.as_bytes()).await?;
                     stdout.flush().await?;
+                    
+                    // Count characters and estimate tokens
+                    char_count += resp.response.len();
+                    // Rough token estimation: ~4 chars per token for English, ~2 for CJK
+                    token_count += resp.response.chars().count();
                 }
+            }
+            
+            let total_time = start_time.elapsed();
+            
+            // Estimate tokens (rough: 1 char ≈ 1 token for mixed content)
+            let estimated_tokens = token_count;
+            
+            // Print stats
+            println!("\n\n---");
+            if let Some(ttft) = first_token_time {
+                println!("Time to first token: {:.2}s", ttft.as_secs_f64());
+            }
+            println!("Total time: {:.2}s", total_time.as_secs_f64());
+            println!("Characters: {}", char_count);
+            println!("Estimated tokens: ~{}", estimated_tokens);
+            if estimated_tokens > 0 && total_time.as_secs_f64() > 0.0 {
+                println!("Tokens/sec: ~{:.1}", estimated_tokens as f64 / total_time.as_secs_f64());
             }
         }
     }
