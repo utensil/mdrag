@@ -76,21 +76,26 @@ impl MarkdownParser {
     }
 
     fn split_large_chunk(chunk: &str) -> Vec<String> {
-        const MAX_CHUNK_SIZE: usize = 8192;
+        // AGENT-NOTE: Filter useless content and handle oversized chunks intelligently
+        // nomic-embed-text has 8192 token limit; use conservative char estimate
+        const MAX_TOKEN_ESTIMATE: usize = 4000; // Very conservative: ~2 chars per token for dense content
 
-        if chunk.len() <= MAX_CHUNK_SIZE {
-            return vec![chunk.to_string()];
+        // Remove base64 image data (useless for RAG)
+        let base64_pattern = Regex::new(r"data:image/[^;]+;base64,[A-Za-z0-9+/=]{100,}").unwrap();
+        let cleaned = base64_pattern.replace_all(chunk, "[image removed]");
+
+        if cleaned.len() <= MAX_TOKEN_ESTIMATE {
+            return vec![cleaned.to_string()];
         }
 
         let mut chunks = Vec::new();
         let mut start = 0;
 
-        while start < chunk.len() {
-            let end = (start + MAX_CHUNK_SIZE).min(chunk.len());
+        while start < cleaned.len() {
+            let end = (start + MAX_TOKEN_ESTIMATE).min(cleaned.len());
 
-            // Try to find a good breaking point (newline) near the end
-            let actual_end = if end < chunk.len() {
-                chunk[start..end]
+            let actual_end = if end < cleaned.len() {
+                cleaned[start..end]
                     .rfind('\n')
                     .map(|pos| start + pos + 1)
                     .unwrap_or(end)
@@ -98,7 +103,10 @@ impl MarkdownParser {
                 end
             };
 
-            chunks.push(chunk[start..actual_end].to_string());
+            let chunk_text = &cleaned[start..actual_end];
+            if !chunk_text.trim().is_empty() {
+                chunks.push(chunk_text.to_string());
+            }
             start = actual_end;
         }
 

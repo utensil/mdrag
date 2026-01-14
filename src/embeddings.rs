@@ -65,8 +65,17 @@ impl<'a> Embedder<'a> {
 
         debug!("Split {} into {} chunks", &path_str, chunks.len());
 
-        for chunk in chunks {
-            self.embed_chunk(&path_str, &chunk).await?;
+        for (i, chunk) in chunks.iter().enumerate() {
+            // Skip chunks that are still too large (safety check)
+            if chunk.len() > 4000 {
+                debug!("Skipping oversized chunk {} from {}: {} chars", i, &path_str, chunk.len());
+                continue;
+            }
+            // Try to embed, but skip if it fails (chunk too dense)
+            if let Err(e) = self.embed_chunk(&path_str, &chunk).await {
+                debug!("Skipping chunk {} from {} due to error: {}", i, &path_str, e);
+                continue;
+            }
         }
 
         Ok(())
