@@ -23,14 +23,18 @@ impl<'a> Embedder<'a> {
     
     // AGENT-NOTE: Table naming rules
     // 1. Remove common prefixes/suffixes: "embed", "embedding", "text"
-    // 2. Extract name: first 6 chars (or until non-alphanumeric)
+    // 2. Extract name: first 6 alphanumeric chars
     // 3. Extract version: strip non-alphanumeric
-    // 4. Format: emb_{name}_{version} with no consecutive underscores
+    // 4. Add 4-char hash of full model name for uniqueness
+    // 5. Format: emb_{name}_{version}_{hash} with no consecutive underscores
     // Examples:
-    //   nomic-embed-text:v1.5    → emb_nomic_v15
-    //   qwen3-embedding:4b       → emb_qwen3_4b
-    //   embeddinggemma:latest    → emb_gemma_latest
+    //   nomic-embed-text:v1.5    → emb_nomic_v15_a3f2
+    //   qwen3-embedding:4b       → emb_qwen3_4b_7c8d
+    //   embeddinggemma:latest    → emb_gemma_latest_9e1f
     fn get_table_name(model: &str) -> String {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        
         // Remove common prefixes/suffixes
         let mut cleaned = model.to_string();
         cleaned = cleaned.replace("embedding", "");
@@ -61,11 +65,17 @@ impl<'a> Embedder<'a> {
             String::new()
         };
         
+        // Generate 4-char hash of full model name
+        let mut hasher = DefaultHasher::new();
+        model.hash(&mut hasher);
+        let hash = format!("{:x}", hasher.finish());
+        let hash_suffix = &hash[..4];
+        
         // Build table name with no consecutive underscores
         if version.is_empty() {
-            format!("emb_{}", name)
+            format!("emb_{}__{}", name, hash_suffix)
         } else {
-            format!("emb_{}_{}", name, version)
+            format!("emb_{}_{}_{}", name, version, hash_suffix)
         }
     }
     
