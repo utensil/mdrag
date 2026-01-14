@@ -76,15 +76,15 @@ impl MarkdownParser {
     }
 
     fn split_large_chunk(chunk: &str) -> Vec<String> {
-        // AGENT-NOTE: Filter useless content and handle oversized chunks intelligently
-        // nomic-embed-text has 8192 token limit; use conservative char estimate
-        const MAX_TOKEN_ESTIMATE: usize = 4000; // Very conservative: ~2 chars per token for dense content
+        // AGENT-NOTE: Keep 8192 base size, filter base64, dynamically adjust only when needed
+        const MAX_CHUNK_SIZE: usize = 8192;
+        const MAX_TOKEN_ESTIMATE: usize = 4000; // ~2 chars per token for dense content
 
         // Remove base64 image data (useless for RAG)
         let base64_pattern = Regex::new(r"data:image/[^;]+;base64,[A-Za-z0-9+/=]{100,}").unwrap();
         let cleaned = base64_pattern.replace_all(chunk, "[image removed]");
 
-        if cleaned.len() <= MAX_TOKEN_ESTIMATE {
+        if cleaned.len() <= MAX_CHUNK_SIZE {
             return vec![cleaned.to_string()];
         }
 
@@ -92,7 +92,13 @@ impl MarkdownParser {
         let mut start = 0;
 
         while start < cleaned.len() {
-            let end = (start + MAX_TOKEN_ESTIMATE).min(cleaned.len());
+            // Try full size first
+            let mut end = (start + MAX_CHUNK_SIZE).min(cleaned.len());
+            
+            // If this would create a chunk > token limit, shrink it
+            if end - start > MAX_TOKEN_ESTIMATE {
+                end = start + MAX_TOKEN_ESTIMATE;
+            }
 
             let actual_end = if end < cleaned.len() {
                 cleaned[start..end]
