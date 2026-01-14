@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Result, bail};
 use clap::{Parser, Subcommand};
 use env_logger::Env;
 use log::{debug, info};
@@ -13,6 +13,51 @@ use crate::embeddings::Embedder;
 mod embeddings;
 mod markdown;
 
+const SUPPORTED_EMBED_MODELS: &[&str] = &[
+    "qwen3-embedding:4b",
+    "qwen3-embedding:8b",
+    "nomic-embed-text:v1.5",
+    "embeddinggemma:latest",
+];
+
+const SUPPORTED_LLM_MODELS: &[&str] = &[
+    "qwen3:14b",
+    "qwen3:8b",
+    "gemma3:1b",
+];
+
+async fn check_model_available(ollama: &Ollama, model: &str) -> Result<bool> {
+    match ollama.list_local_models().await {
+        Ok(models) => Ok(models.iter().any(|m| m.name == model)),
+        Err(_) => Ok(false),
+    }
+}
+
+async fn prompt_model_selection(ollama: &Ollama, model_type: &str, models: &[&str]) -> Result<String> {
+    println!("\n{} model '{}' not found.", model_type, models[0]);
+    println!("\nSupported {} models:", model_type);
+    
+    let mut has_available = false;
+    for model in models.iter() {
+        let available = check_model_available(ollama, model).await?;
+        let status = if available { "✓" } else { "⬇" };
+        let note = if available { "(available)" } else { "(needs download)" };
+        println!("  {} {} {}", status, model, note);
+        if available {
+            has_available = true;
+        }
+    }
+    
+    println!("\nTo download a model, run:");
+    println!("  ollama pull <model-name>");
+    
+    if has_available {
+        println!("\nOr specify an available model with --model flag");
+    }
+    
+    bail!("Model not available. Please download or specify an existing model.");
+}
+
 #[derive(Parser)]
 #[command(name = "mdrag")]
 #[command(about = "RAG Pipeline for Markdown Files")]
@@ -26,14 +71,16 @@ enum Commands {
     Embed {
         #[arg(value_name = "VAULT_PATH")]
         vault_path: String,
-        #[arg(long, default_value = "nomic-embed-text:v1.5")]
-        model: String,
+        #[arg(long)]
+        model: Option<String>,
     },
     Search {
         #[arg(value_name = "QUERY")]
         query: String,
-        #[arg(long, default_value = "nomic-embed-text:v1.5")]
-        model: String,
+        #[arg(long)]
+        embed_model: Option<String>,
+        #[arg(long)]
+        llm_model: Option<String>,
     },
 }
 
@@ -54,17 +101,49 @@ async fn main() -> Result<()> {
 
     match &cli.command {
         Commands::Embed { vault_path, model } => {
-            info!("Embedding files from directory: {} with model: {}", vault_path, model);
-            embedder.embed_dir(vault_path, model).await?;
+            let embed_model = match model {
+                Some(m) => m.clone(),
+                None => {
+                    if !check_model_available(&ollama, SUPPORTED_EMBED_MODELS[0]).await? {
+                        prompt_model_selection(&ollama, "Embedding", SUPPORTED_EMBED_MODELS).await?
+                    } else {
+                        SUPPORTED_EMBED_MODELS[0].to_string()
+                    }
+                }
+            };
+            
+            info!("Embedding files from directory: {} with model: {}", vault_path, embed_model);
+            embedder.embed_dir(vault_path, &embed_model).await?;
             info!("Embedding completed successfully!");
         }
-        Commands::Search { query, model } => {
-            info!("Searching for: {} with model: {}", query, model);
+        Commands::Search { query, embed_model, llm_model } => {
+            let embed = match embed_model {
+                Some(m) => m.clone(),
+                None => {
+                    if !check_model_available(&ollama, SUPPORTED_EMBED_MODELS[0]).await? {
+                        prompt_model_selection(&ollama, "Embedding", SUPPORTED_EMBED_MODELS).await?
+                    } else {
+                        SUPPORTED_EMBED_MODELS[0].to_string()
+                    }
+                }
+            };
+            
+            let llm = match llm_model {
+                Some(m) => m.clone(),
+                None => {
+                    if !check_model_available(&ollama, SUPPORTED_LLM_MODELS[0]).await? {
+                        prompt_model_selection(&ollama, "LLM", SUPPORTED_LLM_MODELS).await?
+                    } else {
+                        SUPPORTED_LLM_MODELS[0].to_string()
+                    }
+                }
+            };
+            
+            info!("Searching for: {} with embedding model: {}, LLM model: {}", query, embed, llm);
 
-            let results = embedder.search(&query, 5, model).await?;
+            let results = embedder.search(&query, 5, &embed).await?;
             debug!("Results: {:?}", results);
 
-            let model = "gemma3:1b".to_string();
             let options = ModelOptions::default()
                 .temperature(0.2)
                 .top_k(25)
@@ -79,7 +158,7 @@ async fn main() -> Result<()> {
             debug!("Prompt: {}", prompt);
 
             let mut stream = ollama
-                .generate_stream(GenerationRequest::new(model, prompt).options(options))
+                .generate_stream(GenerationRequest::new(llm, prompt).options(options))
                 .await?;
 
             let mut stdout = io::stdout();
