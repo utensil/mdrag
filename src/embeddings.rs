@@ -17,17 +17,42 @@ pub struct Embedder<'a> {
 
 impl<'a> Embedder<'a> {
     pub fn new(conn: &'a Connection, ollama: &'a Ollama) -> Result<Self> {
-        conn.execute(
-            "CREATE VIRTUAL TABLE IF NOT EXISTS file_embeddings USING vec0(
-            path TEXT,
-            contents TEXT,
-            model TEXT,
-            embedding FLOAT[768]
-        )",
-            [],
-        )?;
-
+        // AGENT-NOTE: We don't create tables here anymore - they're created dynamically per model
         Ok(Self { conn, ollama })
+    }
+    
+    // AGENT-NOTE: Abbreviation rules for table names
+    // - Remove common prefixes: "embedding", "embed", "text"
+    // - Keep vendor name and version
+    // Examples:
+    //   nomic-embed-text:v1.5    → emb_nomic_v15
+    //   qwen3-embedding:4b       → emb_qwen3_4b
+    //   embeddinggemma:latest    → emb_gemma_latest
+    fn get_table_name(model: &str) -> String {
+        let name = model
+            .replace("embedding", "")
+            .replace("embed", "")
+            .replace("-text", "")
+            .replace("nomic-", "nomic_")
+            .replace(":", "_")
+            .replace("-", "")
+            .replace(".", "");
+        
+        format!("emb_{}", name.trim_matches('_'))
+    }
+    
+    fn ensure_table_for_model(&self, model: &str, dimension: usize) -> Result<()> {
+        let table_name = Self::get_table_name(model);
+        let sql = format!(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS {} USING vec0(
+                path TEXT,
+                contents TEXT,
+                embedding FLOAT[{}]
+            )",
+            table_name, dimension
+        );
+        self.conn.execute(&sql, [])?;
+        Ok(())
     }
 
     pub async fn generate_embeddings(&self, text: &str, model: &str) -> Result<Vec<Vec<f32>>> {
@@ -63,13 +88,14 @@ impl<'a> Embedder<'a> {
 
     pub async fn embed_file(&self, path: impl AsRef<Path>, model: &str) -> Result<()> {
         let path_str = path.as_ref().to_string_lossy().to_string();
+        let table_name = Self::get_table_name(model);
 
         // Check if file already has embeddings with this model
-        let mut stmt = self
-            .conn
-            .prepare("SELECT COUNT(*) FROM file_embeddings WHERE path = ? AND model = ?")?;
-        let count: i64 = stmt.query_row((&path_str, model), |row| row.get(0))?;
-        if count > 0 {
+        let query = format!("SELECT COUNT(*) FROM {} WHERE path = ?", table_name);
+        let count: Result<i64, _> = self.conn.query_row(&query, [&path_str], |row| row.get(0));
+        
+        // If table doesn't exist or file not embedded yet
+        if count.unwrap_or(0) > 0 {
             debug!("File already embedded with model {}, skipping: {}", model, path_str);
             return Ok(());
         }
@@ -99,27 +125,72 @@ impl<'a> Embedder<'a> {
 
     async fn embed_chunk(&self, file_path: &str, chunk: &str, model: &str) -> Result<()> {
         let embeddings = self.generate_embeddings(chunk, model).await?;
+        
+        // Ensure table exists with correct dimensions
+        let dimension = embeddings[0].len();
+        self.ensure_table_for_model(model, dimension)?;
+        
+        let table_name = Self::get_table_name(model);
+        let query = format!(
+            "INSERT INTO {} (path, contents, embedding) VALUES (?, ?, ?)",
+            table_name
+        );
 
-        let mut stmt = self
-            .conn
-            .prepare("INSERT INTO file_embeddings (path, contents, model, embedding) VALUES (?, ?, ?, ?)")?;
-
-        stmt.execute((file_path, chunk, model, embeddings[0].as_bytes()))?;
+        self.conn.execute(&query, (file_path, chunk, embeddings[0].as_bytes()))?;
 
         Ok(())
     }
 
     pub async fn search(&self, query: &str, k: usize, model: &str) -> Result<Vec<String>> {
+        let table_name = Self::get_table_name(model);
+        
+        // Check if table exists for this model
+        let table_exists: Result<i64, _> = self.conn.query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?",
+            [&table_name],
+            |row| row.get(0)
+        );
+        
+        if table_exists.unwrap_or(0) == 0 {
+            // List available models by checking all emb_* tables (excluding internal vec0 tables)
+            let mut stmt = self.conn.prepare(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'emb_%' 
+                 AND name NOT LIKE '%_info' AND name NOT LIKE '%_chunks' 
+                 AND name NOT LIKE '%_rowids' AND name NOT LIKE '%_vector_%' 
+                 AND name NOT LIKE '%_metadata%'"
+            )?;
+            let available: Vec<String> = stmt
+                .query_map([], |row| row.get(0))?
+                .collect::<Result<Vec<String>, _>>()?;
+            
+            if available.is_empty() {
+                anyhow::bail!("No embeddings found in database. Run 'embed' command first.");
+            } else {
+                // Convert table names back to model names for display
+                let model_names: Vec<String> = available.iter()
+                    .map(|t| t.strip_prefix("emb_").unwrap_or(t))
+                    .map(|s| s.to_string())
+                    .collect();
+                anyhow::bail!(
+                    "No embeddings found for model '{}'. Available: {}\n\
+                    Either re-embed with this model or use --rag-model with an available model.",
+                    model, model_names.join(", ")
+                );
+            }
+        }
+        
         let query_embedding = self.generate_embeddings(query, model).await?;
 
-        let mut stmt = self.conn.prepare(
+        let sql = format!(
             "SELECT contents
-            FROM file_embeddings
+            FROM {}
             WHERE embedding MATCH ?1
             AND k = ?2
             ORDER BY distance",
-        )?;
-
+            table_name
+        );
+        
+        let mut stmt = self.conn.prepare(&sql)?;
         let results = stmt
             .query_map((query_embedding[0].as_bytes(), k as i32), |row| {
                 Ok(row.get(0)?)
