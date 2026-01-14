@@ -2,7 +2,8 @@ use std::{fs, path::Path};
 
 use anyhow::Result;
 use glob::glob;
-use log::{debug, info};
+use indicatif::{ProgressBar, ProgressStyle};
+use log::debug;
 use ollama_rs::{Ollama, generation::embeddings::request::GenerateEmbeddingsRequest};
 use rusqlite::Connection;
 use zerocopy::IntoBytes;
@@ -41,28 +42,22 @@ impl<'a> Embedder<'a> {
             .collect::<Result<Vec<_>, _>>()?;
         
         let total = files.len();
-        let start_time = std::time::Instant::now();
         
-        info!("Found {} markdown files to process", total);
+        let pb = ProgressBar::new(total as u64);
+        pb.set_style(
+            ProgressStyle::default_bar()
+                .template("[{elapsed_precise}] {bar:40.cyan/blue} {pos}/{len} {msg} (ETA: {eta})")
+                .unwrap()
+                .progress_chars("=>-")
+        );
         
-        for (idx, file_path) in files.iter().enumerate() {
-            let completed = idx + 1;
-            let elapsed = start_time.elapsed().as_secs_f64();
-            let rate = completed as f64 / elapsed;
-            let remaining = total - completed;
-            let eta_secs = if rate > 0.0 { remaining as f64 / rate } else { 0.0 };
-            
-            info!(
-                "[{}/{}] Processing: {} (ETA: {:.0}s)",
-                completed,
-                total,
-                file_path.display(),
-                eta_secs
-            );
-            
+        for file_path in files.iter() {
+            pb.set_message(format!("{}", file_path.display()));
             self.embed_file(file_path).await?;
+            pb.inc(1);
         }
-
+        
+        pb.finish_with_message("Completed");
         Ok(())
     }
 
