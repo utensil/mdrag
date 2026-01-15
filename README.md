@@ -23,6 +23,14 @@ This fork adds significant improvements for production use with CJK (Chinese/Jap
 - Smart chunk sizing with base64 image filtering
 - Default models optimized for CJK: qwen3-embedding:4b + qwen3:14b
 
+**For English-only content**, use smaller/faster models:
+```bash
+ollama pull nomic-embed-text:v1.5
+ollama pull gemma3:1b
+mdrag embed /path/to/vault --model nomic-embed-text:v1.5
+mdrag search "query" --rag-model nomic-embed-text:v1.5 --chat-model gemma3:1b
+```
+
 **🔍 Enhanced Metadata**
 - Section tracking with chunk positions: `[Section: ## Introduction (chunk 1/3)]`
 - Searchable by section names
@@ -47,23 +55,11 @@ Original project by [orellazri](https://github.com/orellazri/mdrag). Read more i
 
 1. **Rust**
 2. **Ollama**
-3. **Default models** (optimized for CJK content):
+3. **Required models**:
    ```bash
-   ollama pull qwen3-embedding:4b
-   ollama pull qwen3:14b
+   ollama pull nomic-embed-text-v1.5
+   ollama pull gemma3:1b
    ```
-
-**For English-only content**, you can use smaller, faster models:
-```bash
-ollama pull nomic-embed-text:v1.5
-ollama pull gemma3:1b
-```
-
-Then specify them with flags:
-```bash
-mdrag embed /path/to/vault --model nomic-embed-text:v1.5
-mdrag search "query" --rag-model nomic-embed-text:v1.5 --chat-model gemma3:1b
-```
 
 ## Installation
 
