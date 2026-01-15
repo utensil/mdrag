@@ -47,11 +47,23 @@ Original project by [orellazri](https://github.com/orellazri/mdrag). Read more i
 
 1. **Rust**
 2. **Ollama**
-3. **Required models**:
+3. **Default models** (optimized for CJK content):
    ```bash
-   ollama pull nomic-embed-text-v1.5
-   ollama pull gemma3:1b
+   ollama pull qwen3-embedding:4b
+   ollama pull qwen3:14b
    ```
+
+**For English-only content**, you can use smaller, faster models:
+```bash
+ollama pull nomic-embed-text:v1.5
+ollama pull gemma3:1b
+```
+
+Then specify them with flags:
+```bash
+mdrag embed /path/to/vault --model nomic-embed-text:v1.5
+mdrag search "query" --rag-model nomic-embed-text:v1.5 --chat-model gemma3:1b
+```
 
 ## Installation
 
