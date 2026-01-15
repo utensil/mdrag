@@ -184,7 +184,8 @@ async fn main() -> Result<()> {
 
             let mut stdout = io::stdout();
             let mut first_token_time: Option<std::time::Duration> = None;
-            let mut token_count = 0;
+            let mut english_chars = 0;
+            let mut cjk_chars = 0;
             
             while let Some(res) = stream.next().await {
                 let responses = res?;
@@ -196,9 +197,22 @@ async fn main() -> Result<()> {
                     stdout.write_all(resp.response.as_bytes()).await?;
                     stdout.flush().await?;
                     
-                    // Estimate tokens: ~4 chars per token for English, ~2 for CJK
-                    // Use conservative estimate of 3 chars per token for mixed content
-                    token_count += resp.response.chars().count();
+                    // Count English and CJK characters separately
+                    for c in resp.response.chars() {
+                        if c.is_ascii_alphanumeric() || c.is_ascii_punctuation() || c.is_ascii_whitespace() {
+                            english_chars += 1;
+                        } else if ('\u{4E00}'..='\u{9FFF}').contains(&c)  // CJK Unified Ideographs
+                            || ('\u{3400}'..='\u{4DBF}').contains(&c)     // CJK Extension A
+                            || ('\u{20000}'..='\u{2A6DF}').contains(&c)   // CJK Extension B
+                            || ('\u{3040}'..='\u{309F}').contains(&c)     // Hiragana
+                            || ('\u{30A0}'..='\u{30FF}').contains(&c)     // Katakana
+                            || ('\u{AC00}'..='\u{D7AF}').contains(&c) {   // Hangul
+                            cjk_chars += 1;
+                        } else {
+                            // Other characters (punctuation, symbols, etc.) - count as English
+                            english_chars += 1;
+                        }
+                    }
                 }
             }
             
@@ -212,8 +226,8 @@ async fn main() -> Result<()> {
                 generation_time
             };
             
-            // Estimate tokens (rough: ~3 chars per token for mixed content)
-            let estimated_tokens = token_count / 3;
+            // Estimate tokens: ~4 chars per token for English, ~2 for CJK
+            let estimated_tokens = (english_chars / 4) + (cjk_chars / 2);
             
             // Print stats in grey with compact format
             let grey = "\x1b[90m";
