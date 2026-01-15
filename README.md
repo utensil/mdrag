@@ -27,7 +27,9 @@ This fork adds significant improvements for production use with CJK (Chinese/Jap
 ```bash
 ollama pull nomic-embed-text:v1.5
 ollama pull gemma3:1b
+# For embedding
 mdrag embed /path/to/vault --model nomic-embed-text:v1.5
+# For search (specify both RAG and chat models)
 mdrag search "query" --rag-model nomic-embed-text:v1.5 --chat-model gemma3:1b
 ```
 
