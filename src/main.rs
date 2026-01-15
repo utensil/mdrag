@@ -220,10 +220,10 @@ async fn main() -> Result<()> {
             
             print!("\n\n{}", grey);
             print!("{:.2}s", total_time.as_secs_f64());
-            print!(" · searched {:.2}s", search_time.as_secs_f64());
+            print!(" · searched for {:.2}s", search_time.as_secs_f64());
             print!(" · found {} chunks", num_chunks);
             if let Some(ttft) = first_token_time {
-                print!(" · thought {:.2}s", ttft.as_secs_f64());
+                print!(" · thought for {:.2}s", ttft.as_secs_f64());
             }
             print!(" · replied in {:.2}s", reply_time.as_secs_f64());
             if estimated_tokens > 0 && reply_time.as_secs_f64() > 0.0 {
