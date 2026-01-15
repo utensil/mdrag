@@ -150,8 +150,11 @@ async fn main() -> Result<()> {
             
             info!("Searching for: {} with embedding model: {}, LLM model: {}", query, embed, llm);
 
+            let search_start = std::time::Instant::now();
             let results = embedder.search(&query, 5, &embed).await?;
+            let search_time = search_start.elapsed();
             debug!("Results: {:?}", results);
+            debug!("Search took: {:.3}s", search_time.as_secs_f64());
 
             let options = ModelOptions::default()
                 .temperature(0.2)
@@ -173,12 +176,12 @@ async fn main() -> Result<()> {
 
             debug!("Prompt: {}", prompt);
 
+            let generation_start = std::time::Instant::now();
             let mut stream = ollama
                 .generate_stream(GenerationRequest::new(llm, prompt).options(options))
                 .await?;
 
             let mut stdout = io::stdout();
-            let start_time = std::time::Instant::now();
             let mut first_token_time: Option<std::time::Duration> = None;
             let mut token_count = 0;
             
@@ -186,7 +189,7 @@ async fn main() -> Result<()> {
                 let responses = res?;
                 for resp in responses {
                     if first_token_time.is_none() && !resp.response.is_empty() {
-                        first_token_time = Some(start_time.elapsed());
+                        first_token_time = Some(generation_start.elapsed());
                     }
                     
                     stdout.write_all(resp.response.as_bytes()).await?;
@@ -197,7 +200,8 @@ async fn main() -> Result<()> {
                 }
             }
             
-            let total_time = start_time.elapsed();
+            let generation_time = generation_start.elapsed();
+            let total_time = search_time + generation_time;
             
             // Estimate tokens (rough: 1 char ≈ 1 token for mixed content)
             let estimated_tokens = token_count;
