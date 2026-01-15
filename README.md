@@ -1,8 +1,44 @@
 # mdrag
 
+## Fork Enhancements
+
+This fork adds significant improvements for production use with CJK (Chinese/Japanese/Korean) content and multi-model workflows:
+
+### Key Features Added
+
+**🚀 Multi-Model Support**
+- Support multiple embedding models simultaneously (qwen3-embedding, nomic-embed-text, etc.)
+- Separate tables per model with automatic dimension handling
+- Smart model switching with `--rag-model` and `--chat-model` flags
+- Model availability checking with helpful prompts
+
+**📊 Rich Statistics**
+- Embed stats: `1 dirs · 4 files · 10929 tokens · embedded in 11.98s`
+- Search stats: `596 tok/sec · 3954 tokens · 0.00s to first token · 6.64s in total`
+- Visual progress bar with ETA during embedding
+
+**🌏 CJK Optimization**
+- UTF-8 char boundary safety for multi-byte characters
+- Smart chunk sizing with base64 image filtering
+- Default models optimized for CJK: qwen3-embedding:4b + qwen3:14b
+
+**🔍 Enhanced Metadata**
+- Section tracking with chunk positions: `[Section: ## Introduction (chunk 1/3)]`
+- Searchable by section names
+- Clear context for LLM without confusion
+
+**🎨 Better UX**
+- Compact grey stats display
+- Model selection with ✓/⬇ indicators
+- Hash-based table naming prevents collisions
+
+See [commit history](https://github.com/utensil/mdrag/commits/main) for detailed changes.
+
+------
+
 A local RAG (Retrieval Augmented Generation) system for chatting with your Obsidian vault using Rust and local AI models.
 
-I built this so I would be able to interact with my Obsidian Vaults locally and with natural language. You can read more about this project in my [blog post](https://orellazri.com/posts/rag-pipeline-chat-with-my-obsidian-vault/).
+Original project by [orellazri](https://github.com/orellazri/mdrag). Read more in the [blog post](https://orellazri.com/posts/rag-pipeline-chat-with-my-obsidian-vault/).
 
 ## Features
 
