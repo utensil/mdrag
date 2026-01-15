@@ -17,8 +17,9 @@ This fork adds significant improvements for production use with CJK (Chinese/Jap
 - Retrieves 4x candidates, reranks to top k for better relevance
 - Progress bar with ETA during reranking
 - Enable with `--rerank` (default model) or `--rerank-model <model>`
-- Default model: `dengcao/Qwen3-Reranker-0.6B:Q8_0`
+- Default model: `qwen3:0.6b` (small LLM for scoring relevance)
 - Configurable result count with `-k` flag (default: 5)
+- **Note**: Dedicated reranker models like `dengcao/Qwen3-Reranker-0.6B:Q8_0` can be used with `--rerank-model`, but may not work as expected since they're trained for Ollama's rerank API (not yet supported) rather than chat-based scoring
 
 **📊 Rich Statistics**
 - Embed stats: `1 dirs · 4 files · 10929 tokens · embedded in 11.98s`
@@ -55,13 +56,13 @@ mdrag search "query" --rag-model nomic-embed-text:v1.5 --chat-model gemma3:1b --
 **For smaller CJK models** (if you want to start with lighter models):
 ```bash
 ollama pull qwen3-embedding:0.6b
+ollama pull qwen3:0.6b  # Default reranker (small LLM)
 ollama pull qwen3:8b
-ollama pull dengcao/Qwen3-Reranker-0.6B:Q8_0  # For reranking
 # For embedding
 mdrag embed /path/to/vault --model qwen3-embedding:0.6b
 # For search
 mdrag search "query" --rag-model qwen3-embedding:0.6b --chat-model qwen3:8b
-# With reranking (default: 5 results)
+# With reranking (default: 5 results, uses qwen3:0.6b)
 mdrag search "query" --rag-model qwen3-embedding:0.6b --chat-model qwen3:8b --rerank
 # Get 10 results with reranking
 mdrag search "query" --rag-model qwen3-embedding:0.6b --chat-model qwen3:8b --rerank -k 10

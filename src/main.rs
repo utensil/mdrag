@@ -26,7 +26,7 @@ const SUPPORTED_LLM_MODELS: &[&str] = &[
     "gemma3:1b",
 ];
 
-const DEFAULT_RERANKER: &str = "dengcao/Qwen3-Reranker-0.6B:Q8_0";
+const DEFAULT_RERANKER: &str = "qwen3:0.6b";
 
 async fn check_model_available(ollama: &Ollama, model: &str) -> Result<bool> {
     match ollama.list_local_models().await {
