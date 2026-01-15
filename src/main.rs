@@ -187,7 +187,17 @@ async fn main() -> Result<()> {
                 let results = scored.into_iter().map(|(c, s, i, t, _score)| (c, s, i, t)).collect();
                 (results, Some(rerank_duration))
             } else {
-                (embedder.search(&query, 5, &embed).await?, None)
+                let results = embedder.search(&query, 5, &embed).await?;
+                
+                // Display found chunks with metadata
+                println!("\n\x1b[90mFound chunks:\x1b[0m");
+                for (idx, (_content, section, chunk_idx, total_chunks)) in results.iter().enumerate() {
+                    println!("\x1b[90m  {}. [{}/{}:{}]\x1b[0m", 
+                        idx + 1, chunk_idx + 1, total_chunks, section);
+                }
+                println!();
+                
+                (results, None)
             };
             let search_time = search_start.elapsed();
             let num_chunks = results.len();
