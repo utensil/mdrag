@@ -84,6 +84,9 @@ impl<'a> Embedder<'a> {
         let sql = format!(
             "CREATE VIRTUAL TABLE IF NOT EXISTS {} USING vec0(
                 path TEXT,
+                section TEXT,
+                chunk_index INTEGER,
+                total_chunks INTEGER,
                 contents TEXT,
                 embedding FLOAT[{}]
             )",
@@ -147,12 +150,12 @@ impl<'a> Embedder<'a> {
 
         for (i, chunk) in chunks.iter().enumerate() {
             // Skip chunks that are still too large (safety check)
-            if chunk.len() > 4000 {
-                debug!("Skipping oversized chunk {} from {}: {} chars", i, &path_str, chunk.len());
+            if chunk.content.len() > 4000 {
+                debug!("Skipping oversized chunk {} from {}: {} chars", i, &path_str, chunk.content.len());
                 continue;
             }
             // Try to embed, but skip if it fails (chunk too dense)
-            if let Err(e) = self.embed_chunk(&path_str, &chunk, model).await {
+            if let Err(e) = self.embed_chunk(&path_str, chunk, model).await {
                 debug!("Skipping chunk {} from {} due to error: {}", i, &path_str, e);
                 continue;
             }
@@ -161,8 +164,8 @@ impl<'a> Embedder<'a> {
         Ok(())
     }
 
-    async fn embed_chunk(&self, file_path: &str, chunk: &str, model: &str) -> Result<()> {
-        let embeddings = self.generate_embeddings(chunk, model).await?;
+    async fn embed_chunk(&self, file_path: &str, chunk: &crate::markdown::Chunk, model: &str) -> Result<()> {
+        let embeddings = self.generate_embeddings(&chunk.content, model).await?;
         
         // Ensure table exists with correct dimensions
         let dimension = embeddings[0].len();
@@ -170,16 +173,23 @@ impl<'a> Embedder<'a> {
         
         let table_name = Self::get_table_name(model);
         let query = format!(
-            "INSERT INTO {} (path, contents, embedding) VALUES (?, ?, ?)",
+            "INSERT INTO {} (path, section, chunk_index, total_chunks, contents, embedding) VALUES (?, ?, ?, ?, ?, ?)",
             table_name
         );
 
-        self.conn.execute(&query, (file_path, chunk, embeddings[0].as_bytes()))?;
+        self.conn.execute(&query, (
+            file_path,
+            &chunk.section,
+            chunk.chunk_index as i64,
+            chunk.total_chunks as i64,
+            &chunk.content,
+            embeddings[0].as_bytes()
+        ))?;
 
         Ok(())
     }
 
-    pub async fn search(&self, query: &str, k: usize, model: &str) -> Result<Vec<String>> {
+    pub async fn search(&self, query: &str, k: usize, model: &str) -> Result<Vec<(String, String, usize, usize)>> {
         let table_name = Self::get_table_name(model);
         
         // Check if table exists for this model
@@ -220,7 +230,7 @@ impl<'a> Embedder<'a> {
         let query_embedding = self.generate_embeddings(query, model).await?;
 
         let sql = format!(
-            "SELECT contents
+            "SELECT contents, section, chunk_index, total_chunks
             FROM {}
             WHERE embedding MATCH ?1
             AND k = ?2
@@ -231,9 +241,14 @@ impl<'a> Embedder<'a> {
         let mut stmt = self.conn.prepare(&sql)?;
         let results = stmt
             .query_map((query_embedding[0].as_bytes(), k as i32), |row| {
-                Ok(row.get(0)?)
+                Ok((
+                    row.get(0)?,  // contents
+                    row.get(1)?,  // section
+                    row.get::<_, i64>(2)? as usize,  // chunk_index
+                    row.get::<_, i64>(3)? as usize,  // total_chunks
+                ))
             })?
-            .collect::<Result<Vec<String>, _>>()?;
+            .collect::<Result<Vec<_>, _>>()?;
 
         Ok(results)
     }

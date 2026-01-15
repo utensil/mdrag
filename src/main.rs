@@ -153,7 +153,14 @@ async fn main() -> Result<()> {
             );
             results
                 .iter()
-                .for_each(|result| prompt.push_str(&format!("\n\n{}", result)));
+                .for_each(|(content, section, chunk_idx, total_chunks)| {
+                    let chunk_info = if *total_chunks > 1 {
+                        format!(" (chunk {}/{})", chunk_idx, total_chunks)
+                    } else {
+                        String::new()
+                    };
+                    prompt.push_str(&format!("\n\n[Section: {}{}]\n{}", section, chunk_info, content));
+                });
 
             debug!("Prompt: {}", prompt);
 
