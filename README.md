@@ -14,7 +14,8 @@ This fork adds significant improvements for production use with CJK (Chinese/Jap
 
 **📊 Rich Statistics**
 - Embed stats: `1 dirs · 4 files · 10929 tokens · embedded in 11.98s`
-- Search stats: `596 tok/sec · 3954 tokens · 0.00s to first token · 6.64s in total`
+- Search stats: `7.24s · searched for 0.13s · found 5 chunks · digested for 0.87s · replied in 6.24s · 158 tok/s`
+- Character-based token estimation (accurate for mixed CJK/English content)
 - Visual progress bar with ETA during embedding
 
 **🌏 CJK Optimization**
