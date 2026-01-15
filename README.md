@@ -33,6 +33,16 @@ mdrag embed /path/to/vault --model nomic-embed-text:v1.5
 mdrag search "query" --rag-model nomic-embed-text:v1.5 --chat-model gemma3:1b
 ```
 
+**For smaller CJK models** (if you want to start with lighter models):
+```bash
+ollama pull qwen3-embedding:0.6b
+ollama pull qwen3:8b
+# For embedding
+mdrag embed /path/to/vault --model qwen3-embedding:0.6b
+# For search
+mdrag search "query" --rag-model qwen3-embedding:0.6b --chat-model qwen3:8b
+```
+
 **🔍 Enhanced Metadata**
 - Section tracking with chunk positions: `[Section: ## Introduction (chunk 1/3)]`
 - Searchable by section names
