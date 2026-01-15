@@ -27,12 +27,7 @@ This fork adds significant improvements for production use with CJK (Chinese/Jap
 - Searchable by section names
 - Clear context for LLM without confusion
 
-**🎨 Better UX**
-- Compact grey stats display
-- Model selection with ✓/⬇ indicators
-- Hash-based table naming prevents collisions
-
-See [commit history](https://github.com/utensil/mdrag/commits/main) for detailed changes.
+Forked from [orellazri/mdrag](https://github.com/orellazri/mdrag). See [comparison with upstream](https://github.com/orellazri/mdrag/compare/main...utensil:mdrag:main) for detailed changes.
 
 ------
 
