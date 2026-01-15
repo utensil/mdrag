@@ -189,17 +189,20 @@ async fn main() -> Result<()> {
             // Estimate tokens (rough: 1 char ≈ 1 token for mixed content)
             let estimated_tokens = token_count;
             
-            // Print stats
-            println!("\n\n---");
-            if let Some(ttft) = first_token_time {
-                println!("Time to first token: {:.2}s", ttft.as_secs_f64());
-            }
-            println!("Total time: {:.2}s", total_time.as_secs_f64());
-            println!("Characters: {}", char_count);
-            println!("Estimated tokens: ~{}", estimated_tokens);
+            // Print stats in grey with compact format
+            let grey = "\x1b[90m";
+            let reset = "\x1b[0m";
+            
+            print!("\n\n{}", grey);
             if estimated_tokens > 0 && total_time.as_secs_f64() > 0.0 {
-                println!("Tokens/sec: ~{:.1}", estimated_tokens as f64 / total_time.as_secs_f64());
+                print!("{:.0} tok/sec", estimated_tokens as f64 / total_time.as_secs_f64());
             }
+            print!(" · {} tokens", estimated_tokens);
+            if let Some(ttft) = first_token_time {
+                print!(" · {:.2}s to first token", ttft.as_secs_f64());
+            }
+            print!(" · {:.2}s in total", total_time.as_secs_f64());
+            println!("{}\n", reset);
         }
     }
 
