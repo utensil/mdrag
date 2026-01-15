@@ -79,6 +79,8 @@ enum Commands {
     Search {
         #[arg(value_name = "QUERY")]
         query: String,
+        #[arg(short = 'k', long, default_value = "5", help = "Number of results to return")]
+        top_k: usize,
         #[arg(long)]
         rag_model: Option<String>,
         #[arg(long)]
@@ -131,7 +133,7 @@ async fn main() -> Result<()> {
             println!("\n{}{} dirs · {} files · {} tokens · embedded in {:.2}s{}\n", 
                 grey, dirs, files, tokens, total_time.as_secs_f64(), reset);
         }
-        Commands::Search { query, rag_model, chat_model, rerank, rerank_model } => {
+        Commands::Search { query, top_k, rag_model, chat_model, rerank, rerank_model } => {
             let embed = match rag_model {
                 Some(m) => m.clone(),
                 None => {
@@ -173,10 +175,10 @@ async fn main() -> Result<()> {
             let search_start = std::time::Instant::now();
             let (results, rerank_time) = if let Some(reranker_model) = &use_reranker {
                 // Use reranking with 4x candidates
-                let (scored, rerank_duration) = embedder.search_with_rerank(&query, 5, &embed, &reranker_model, 4).await?;
+                let (scored, rerank_duration) = embedder.search_with_rerank(&query, *top_k, &embed, &reranker_model, 4).await?;
                 
                 // Display reranked chunks with metadata
-                println!("\n\x1b[90mReranked chunks (top {} from {}):\x1b[0m", 5, 5 * 4);
+                println!("\n\x1b[90mReranked chunks (top {} from {}):\x1b[0m", top_k, top_k * 4);
                 for (idx, (_content, section, chunk_idx, total_chunks, score)) in scored.iter().enumerate() {
                     println!("\x1b[90m  {}. [{}/{}:{}] score: {:.3}\x1b[0m", 
                         idx + 1, chunk_idx + 1, total_chunks, section, score);
@@ -187,7 +189,7 @@ async fn main() -> Result<()> {
                 let results = scored.into_iter().map(|(c, s, i, t, _score)| (c, s, i, t)).collect();
                 (results, Some(rerank_duration))
             } else {
-                let results = embedder.search(&query, 5, &embed).await?;
+                let results = embedder.search(&query, *top_k, &embed).await?;
                 
                 // Display found chunks with metadata
                 println!("\n\x1b[90mFound chunks:\x1b[0m");
