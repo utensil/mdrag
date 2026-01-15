@@ -165,7 +165,6 @@ async fn main() -> Result<()> {
             let start_time = std::time::Instant::now();
             let mut first_token_time: Option<std::time::Duration> = None;
             let mut token_count = 0;
-            let mut char_count = 0;
             
             while let Some(res) = stream.next().await {
                 let responses = res?;
@@ -177,9 +176,7 @@ async fn main() -> Result<()> {
                     stdout.write_all(resp.response.as_bytes()).await?;
                     stdout.flush().await?;
                     
-                    // Count characters and estimate tokens
-                    char_count += resp.response.len();
-                    // Rough token estimation: ~4 chars per token for English, ~2 for CJK
+                    // Estimate tokens by character count
                     token_count += resp.response.chars().count();
                 }
             }
