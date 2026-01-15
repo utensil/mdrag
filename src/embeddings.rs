@@ -265,4 +265,65 @@ impl<'a> Embedder<'a> {
 
         Ok(results)
     }
+
+    // AGENT-NOTE: LLM-based reranking following community best practices:
+    // 1. Minimal prompt (no verbose instructions)
+    // 2. Temperature = 0 (deterministic scoring)
+    // 3. Single document per call (cross-encoder pattern)
+    // 4. Clear output format (score only)
+    async fn score_relevance(&self, query: &str, document: &str, reranker_model: &str) -> Result<f32> {
+        use ollama_rs::generation::completion::request::GenerationRequest;
+        use ollama_rs::models::ModelOptions;
+        
+        // Minimal prompt: just query, document, and score request
+        let prompt = format!(
+            "Query: {}\nDocument: {}\nScore (0-10):",
+            query, document
+        );
+        
+        let options = ModelOptions::default().temperature(0.0);
+        let request = GenerationRequest::new(reranker_model.to_string(), prompt)
+            .options(options);
+        
+        let response = self.ollama.generate(request).await?;
+        
+        // Parse score from response (extract first number)
+        let score_str = response.response.trim();
+        let score = score_str
+            .split_whitespace()
+            .find_map(|s| s.parse::<f32>().ok())
+            .unwrap_or(0.0);
+        
+        // Normalize to 0-1 range
+        Ok(score / 10.0)
+    }
+
+    // AGENT-NOTE: Search with reranking - retrieves k*multiplier candidates then reranks top k
+    pub async fn search_with_rerank(
+        &self,
+        query: &str,
+        k: usize,
+        model: &str,
+        reranker_model: &str,
+        multiplier: usize,
+    ) -> Result<Vec<(String, String, usize, usize, f32)>> {
+        // Retrieve more candidates for reranking
+        let candidates = self.search(query, k * multiplier, model).await?;
+        
+        debug!("Reranking {} candidates with model {}", candidates.len(), reranker_model);
+        
+        // Score each candidate (one at a time per best practices)
+        let mut scored_results = Vec::new();
+        for (content, section, chunk_idx, total_chunks) in candidates {
+            let score = self.score_relevance(query, &content, reranker_model).await?;
+            scored_results.push((content, section, chunk_idx, total_chunks, score));
+        }
+        
+        // Sort by score (descending)
+        scored_results.sort_by(|a, b| b.4.partial_cmp(&a.4).unwrap_or(std::cmp::Ordering::Equal));
+        
+        // Return top k
+        scored_results.truncate(k);
+        Ok(scored_results)
+    }
 }

@@ -26,6 +26,8 @@ const SUPPORTED_LLM_MODELS: &[&str] = &[
     "gemma3:1b",
 ];
 
+const DEFAULT_RERANKER: &str = "dengcao/Qwen3-Reranker-0.6B:Q8_0";
+
 async fn check_model_available(ollama: &Ollama, model: &str) -> Result<bool> {
     match ollama.list_local_models().await {
         Ok(models) => Ok(models.iter().any(|m| m.name == model)),
@@ -81,6 +83,8 @@ enum Commands {
         rag_model: Option<String>,
         #[arg(long)]
         chat_model: Option<String>,
+        #[arg(long, help = "Reranker model (default: dengcao/Qwen3-Reranker-0.6B:Q8_0, use 'none' to disable)")]
+        reranker: Option<String>,
     },
 }
 
@@ -125,7 +129,7 @@ async fn main() -> Result<()> {
             println!("\n{}{} dirs · {} files · {} tokens · embedded in {:.2}s{}\n", 
                 grey, dirs, files, tokens, total_time.as_secs_f64(), reset);
         }
-        Commands::Search { query, rag_model, chat_model } => {
+        Commands::Search { query, rag_model, chat_model, reranker } => {
             let embed = match rag_model {
                 Some(m) => m.clone(),
                 None => {
@@ -148,10 +152,29 @@ async fn main() -> Result<()> {
                 }
             };
             
-            info!("Searching for: {} with embedding model: {}, LLM model: {}", query, embed, llm);
+            // Default to reranker unless explicitly disabled with "none"
+            let use_reranker = match reranker.as_deref() {
+                Some("none") => None,
+                Some(model) => Some(model.to_string()),
+                None => Some(DEFAULT_RERANKER.to_string()),
+            };
+            
+            let reranker_info = if let Some(r) = &use_reranker {
+                format!(", reranker: {}", r)
+            } else {
+                String::new()
+            };
+            info!("Searching for: {} with embedding model: {}, LLM model: {}{}", query, embed, llm, reranker_info);
 
             let search_start = std::time::Instant::now();
-            let results = embedder.search(&query, 5, &embed).await?;
+            let results = if let Some(reranker_model) = use_reranker {
+                // Use reranking with 4x candidates
+                let scored = embedder.search_with_rerank(&query, 5, &embed, &reranker_model, 4).await?;
+                // Convert to original format (drop scores)
+                scored.into_iter().map(|(c, s, i, t, _score)| (c, s, i, t)).collect()
+            } else {
+                embedder.search(&query, 5, &embed).await?
+            };
             let search_time = search_start.elapsed();
             let num_chunks = results.len();
             debug!("Results: {:?}", results);
