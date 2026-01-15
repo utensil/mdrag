@@ -12,11 +12,25 @@ This fork adds significant improvements for production use with CJK (Chinese/Jap
 - Smart model switching with `--rag-model` and `--chat-model` flags
 - Model availability checking with helpful prompts
 
+**🎯 LLM-Based Reranking (Opt-in)**
+- Batch reranking with 5x speedup (5 docs/batch)
+- Retrieves 4x candidates, reranks to top k for better relevance
+- Progress bar with ETA during reranking
+- Enable with `--rerank` (default model) or `--rerank-model <model>`
+- Default model: `dengcao/Qwen3-Reranker-0.6B:Q8_0`
+
 **📊 Rich Statistics**
 - Embed stats: `1 dirs · 4 files · 10929 tokens · embedded in 11.98s`
-- Search stats: `7.24s · searched for 0.13s · found 5 chunks · digested for 0.87s · replied in 6.24s · 158 tok/s`
+- Search stats: `7.24s · searched for 0.13s (rerank: 0.10s) · found 5/20 chunks · digested for 0.87s · replied in 6.24s · 158 tok/s`
 - Character-based token estimation (accurate for mixed CJK/English content)
-- Visual progress bar with ETA during embedding
+- Visual progress bar with ETA during embedding and reranking
+- Shows rerank time and k/4k format when reranking enabled
+
+**🔍 Enhanced Search Results**
+- Display found chunks with metadata before answer
+- Format: `[chunk_idx/total_chunks:section]`
+- With reranking: shows relevance scores
+- Without reranking: shows vector similarity order
 
 **🌏 CJK Optimization**
 - UTF-8 char boundary safety for multi-byte characters
@@ -31,22 +45,22 @@ ollama pull gemma3:1b
 mdrag embed /path/to/vault --model nomic-embed-text:v1.5
 # For search (specify both RAG and chat models)
 mdrag search "query" --rag-model nomic-embed-text:v1.5 --chat-model gemma3:1b
+# With reranking
+mdrag search "query" --rag-model nomic-embed-text:v1.5 --chat-model gemma3:1b --rerank
 ```
 
 **For smaller CJK models** (if you want to start with lighter models):
 ```bash
 ollama pull qwen3-embedding:0.6b
 ollama pull qwen3:8b
+ollama pull dengcao/Qwen3-Reranker-0.6B:Q8_0  # For reranking
 # For embedding
 mdrag embed /path/to/vault --model qwen3-embedding:0.6b
 # For search
 mdrag search "query" --rag-model qwen3-embedding:0.6b --chat-model qwen3:8b
+# With reranking
+mdrag search "query" --rag-model qwen3-embedding:0.6b --chat-model qwen3:8b --rerank
 ```
-
-**🔍 Enhanced Metadata**
-- Section tracking with chunk positions: `[Section: ## Introduction (chunk 1/3)]`
-- Searchable by section names
-- Clear context for LLM without confusion
 
 Forked from [orellazri/mdrag](https://github.com/orellazri/mdrag). See [comparison with upstream](https://github.com/orellazri/mdrag/compare/main...utensil:mdrag:main) for detailed changes.
 
