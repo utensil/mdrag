@@ -196,7 +196,8 @@ async fn main() -> Result<()> {
                     stdout.write_all(resp.response.as_bytes()).await?;
                     stdout.flush().await?;
                     
-                    // Estimate tokens by character count
+                    // Estimate tokens: ~4 chars per token for English, ~2 for CJK
+                    // Use conservative estimate of 3 chars per token for mixed content
                     token_count += resp.response.chars().count();
                 }
             }
@@ -211,8 +212,8 @@ async fn main() -> Result<()> {
                 generation_time
             };
             
-            // Estimate tokens (rough: 1 char ≈ 1 token for mixed content)
-            let estimated_tokens = token_count;
+            // Estimate tokens (rough: ~3 chars per token for mixed content)
+            let estimated_tokens = token_count / 3;
             
             // Print stats in grey with compact format
             let grey = "\x1b[90m";
