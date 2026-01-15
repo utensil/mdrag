@@ -203,6 +203,13 @@ async fn main() -> Result<()> {
             let generation_time = generation_start.elapsed();
             let total_time = search_time + generation_time;
             
+            // Calculate reply time (from first token to end)
+            let reply_time = if let Some(ttft) = first_token_time {
+                generation_time - ttft
+            } else {
+                generation_time
+            };
+            
             // Estimate tokens (rough: 1 char ≈ 1 token for mixed content)
             let estimated_tokens = token_count;
             
@@ -211,14 +218,15 @@ async fn main() -> Result<()> {
             let reset = "\x1b[0m";
             
             print!("\n\n{}", grey);
-            if estimated_tokens > 0 && total_time.as_secs_f64() > 0.0 {
-                print!("{:.0} tok/sec", estimated_tokens as f64 / total_time.as_secs_f64());
-            }
-            print!(" · {} tokens", estimated_tokens);
+            print!("{:.2}s", total_time.as_secs_f64());
+            print!(" · searched {:.2}s", search_time.as_secs_f64());
             if let Some(ttft) = first_token_time {
-                print!(" · {:.2}s to first token", ttft.as_secs_f64());
+                print!(" · thought {:.2}s", ttft.as_secs_f64());
             }
-            print!(" · {:.2}s in total", total_time.as_secs_f64());
+            print!(" · replied in {:.2}s", reply_time.as_secs_f64());
+            if estimated_tokens > 0 && reply_time.as_secs_f64() > 0.0 {
+                print!(" · {:.0} tok/s", estimated_tokens as f64 / reply_time.as_secs_f64());
+            }
             println!("{}\n", reset);
         }
     }
