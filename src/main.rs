@@ -153,6 +153,7 @@ async fn main() -> Result<()> {
             let search_start = std::time::Instant::now();
             let results = embedder.search(&query, 5, &embed).await?;
             let search_time = search_start.elapsed();
+            let num_chunks = results.len();
             debug!("Results: {:?}", results);
             debug!("Search took: {:.3}s", search_time.as_secs_f64());
 
@@ -220,6 +221,7 @@ async fn main() -> Result<()> {
             print!("\n\n{}", grey);
             print!("{:.2}s", total_time.as_secs_f64());
             print!(" · searched {:.2}s", search_time.as_secs_f64());
+            print!(" · found {} chunks", num_chunks);
             if let Some(ttft) = first_token_time {
                 print!(" · thought {:.2}s", ttft.as_secs_f64());
             }
