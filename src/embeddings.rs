@@ -276,12 +276,12 @@ impl<'a> Embedder<'a> {
             return Ok(vec![]);
         }
         
-        // Build batch prompt with numbered documents
-        let mut prompt = format!("Query: {}\n\nScore each document 0-10:\n", query);
+        // Build batch prompt - simpler format for reranker models
+        let mut prompt = format!("Query: {}\n\n", query);
         for (i, (content, _, _, _)) in documents.iter().enumerate() {
-            prompt.push_str(&format!("Doc{}: {}\n", i + 1, content));
+            prompt.push_str(&format!("Document {}: {}\n\n", i + 1, content));
         }
-        prompt.push_str("\nOutput scores only as: [score1, score2, ...]");
+        prompt.push_str("Rate each document's relevance to the query on a scale of 0-10.\nProvide only the scores as numbers separated by spaces:");
         
         let options = ModelOptions::default().temperature(0.0);
         let request = GenerationRequest::new(reranker_model.to_string(), prompt)
@@ -291,7 +291,9 @@ impl<'a> Embedder<'a> {
         
         // Parse array of scores from response
         let response_text = response.response.trim();
+        debug!("Reranker response: {}", response_text);
         let scores = Self::parse_score_array(response_text, documents.len());
+        debug!("Parsed scores: {:?}", scores);
         
         Ok(scores)
     }
@@ -330,43 +332,50 @@ impl<'a> Embedder<'a> {
         model: &str,
         reranker_model: &str,
         multiplier: usize,
-    ) -> Result<Vec<(String, String, usize, usize, f32)>> {
+    ) -> Result<(Vec<(String, String, usize, usize, f32)>, std::time::Duration)> {
+        use indicatif::{ProgressBar, ProgressStyle};
+        
+        let rerank_start = std::time::Instant::now();
+        
         // Retrieve more candidates for reranking
         let candidates = self.search(query, k * multiplier, model).await?;
         
         debug!("Reranking {} candidates with model {} (batch size: 5)", candidates.len(), reranker_model);
         
+        // Create progress bar
+        let pb = ProgressBar::new(candidates.len() as u64);
+        pb.set_style(
+            ProgressStyle::default_bar()
+                .template("{msg} [{bar:40.cyan/blue}] {pos}/{len} chunks ({eta})")
+                .unwrap()
+                .progress_chars("=>-")
+        );
+        pb.set_message("Reranking");
+        
         // Score candidates in batches of 5
         const BATCH_SIZE: usize = 5;
         let mut scored_results = Vec::new();
         
-        for (batch_idx, batch) in candidates.chunks(BATCH_SIZE).enumerate() {
-            let start = batch_idx * BATCH_SIZE + 1;
-            let end = start + batch.len() - 1;
-            
-            // Show metadata and preview for each chunk
-            let previews: Vec<String> = batch.iter()
-                .map(|(content, section, chunk_idx, total_chunks)| {
-                    let preview = content.chars().take(50).collect::<String>().replace('\n', " ");
-                    format!("[{}/{}:{}] {}", chunk_idx + 1, total_chunks, section, preview)
-                })
-                .collect();
-            
-            debug!("Reranking chunks {}-{}: {}", start, end, previews.join(" | "));
-            
+        for batch in candidates.chunks(BATCH_SIZE) {
             let scores = self.score_relevance_batch(query, batch, reranker_model).await?;
             
             for (i, (content, section, chunk_idx, total_chunks)) in batch.iter().enumerate() {
                 let score = scores.get(i).copied().unwrap_or(0.0);
                 scored_results.push((content.clone(), section.clone(), *chunk_idx, *total_chunks, score));
             }
+            
+            pb.inc(batch.len() as u64);
         }
+        
+        pb.finish_and_clear();
         
         // Sort by score (descending)
         scored_results.sort_by(|a, b| b.4.partial_cmp(&a.4).unwrap_or(std::cmp::Ordering::Equal));
         
-        // Return top k
+        let rerank_time = rerank_start.elapsed();
+        
+        // Return top k with timing
         scored_results.truncate(k);
-        Ok(scored_results)
+        Ok((scored_results, rerank_time))
     }
 }

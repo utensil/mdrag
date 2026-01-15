@@ -83,8 +83,10 @@ enum Commands {
         rag_model: Option<String>,
         #[arg(long)]
         chat_model: Option<String>,
-        #[arg(long, help = "Reranker model (default: dengcao/Qwen3-Reranker-0.6B:Q8_0, use 'none' to disable)")]
-        reranker: Option<String>,
+        #[arg(long, help = "Enable reranking with default model")]
+        rerank: bool,
+        #[arg(long, help = "Reranker model to use (implies --rerank)")]
+        rerank_model: Option<String>,
     },
 }
 
@@ -129,7 +131,7 @@ async fn main() -> Result<()> {
             println!("\n{}{} dirs · {} files · {} tokens · embedded in {:.2}s{}\n", 
                 grey, dirs, files, tokens, total_time.as_secs_f64(), reset);
         }
-        Commands::Search { query, rag_model, chat_model, reranker } => {
+        Commands::Search { query, rag_model, chat_model, rerank, rerank_model } => {
             let embed = match rag_model {
                 Some(m) => m.clone(),
                 None => {
@@ -152,11 +154,13 @@ async fn main() -> Result<()> {
                 }
             };
             
-            // Default to reranker unless explicitly disabled with "none"
-            let use_reranker = match reranker.as_deref() {
-                Some("none") => None,
-                Some(model) => Some(model.to_string()),
-                None => Some(DEFAULT_RERANKER.to_string()),
+            // Enable reranking if --rerank flag or --rerank-model is provided
+            let use_reranker = if let Some(model) = rerank_model {
+                Some(model.clone())
+            } else if *rerank {
+                Some(DEFAULT_RERANKER.to_string())
+            } else {
+                None
             };
             
             let reranker_info = if let Some(r) = &use_reranker {
@@ -167,13 +171,23 @@ async fn main() -> Result<()> {
             info!("Searching for: {} with embedding model: {}, LLM model: {}{}", query, embed, llm, reranker_info);
 
             let search_start = std::time::Instant::now();
-            let results = if let Some(reranker_model) = use_reranker {
+            let (results, rerank_time) = if let Some(reranker_model) = &use_reranker {
                 // Use reranking with 4x candidates
-                let scored = embedder.search_with_rerank(&query, 5, &embed, &reranker_model, 4).await?;
+                let (scored, rerank_duration) = embedder.search_with_rerank(&query, 5, &embed, &reranker_model, 4).await?;
+                
+                // Display reranked chunks with metadata
+                println!("\n\x1b[90mReranked chunks (top {} from {}):\x1b[0m", 5, 5 * 4);
+                for (idx, (_content, section, chunk_idx, total_chunks, score)) in scored.iter().enumerate() {
+                    println!("\x1b[90m  {}. [{}/{}:{}] score: {:.3}\x1b[0m", 
+                        idx + 1, chunk_idx + 1, total_chunks, section, score);
+                }
+                println!();
+                
                 // Convert to original format (drop scores)
-                scored.into_iter().map(|(c, s, i, t, _score)| (c, s, i, t)).collect()
+                let results = scored.into_iter().map(|(c, s, i, t, _score)| (c, s, i, t)).collect();
+                (results, Some(rerank_duration))
             } else {
-                embedder.search(&query, 5, &embed).await?
+                (embedder.search(&query, 5, &embed).await?, None)
             };
             let search_time = search_start.elapsed();
             let num_chunks = results.len();
@@ -259,7 +273,14 @@ async fn main() -> Result<()> {
             print!("\n\n{}", grey);
             print!("{:.2}s", total_time.as_secs_f64());
             print!(" · searched for {:.2}s", search_time.as_secs_f64());
-            print!(" · found {} chunks", num_chunks);
+            if let Some(rt) = rerank_time {
+                print!(" (rerank: {:.2}s)", rt.as_secs_f64());
+            }
+            if rerank_time.is_some() {
+                print!(" · found {}/{} chunks", num_chunks, num_chunks * 4);
+            } else {
+                print!(" · found {} chunks", num_chunks);
+            }
             if let Some(ttft) = first_token_time {
                 print!(" · digested for {:.2}s", ttft.as_secs_f64());
             }
