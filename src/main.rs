@@ -114,7 +114,7 @@ async fn main() -> Result<()> {
             
             info!("Embedding files from directory: {} with model: {}", vault_path, embed_model);
             let start_time = std::time::Instant::now();
-            embedder.embed_dir(vault_path, &embed_model).await?;
+            let (dirs, files, tokens) = embedder.embed_dir(vault_path, &embed_model).await?;
             let total_time = start_time.elapsed();
             
             info!("Embedding completed successfully!");
@@ -122,7 +122,8 @@ async fn main() -> Result<()> {
             // Print stats in grey
             let grey = "\x1b[90m";
             let reset = "\x1b[0m";
-            println!("\n{}{:.2}s in total{}\n", grey, total_time.as_secs_f64(), reset);
+            println!("\n{}{} dirs · {} files · {} tokens · embedded in {:.2}s{}\n", 
+                grey, dirs, files, tokens, total_time.as_secs_f64(), reset);
         }
         Commands::Search { query, rag_model, chat_model } => {
             let embed = match rag_model {

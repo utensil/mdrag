@@ -103,7 +103,7 @@ impl<'a> Embedder<'a> {
         Ok(response.embeddings)
     }
 
-    pub async fn embed_dir(&self, path: impl AsRef<Path>, model: &str) -> Result<()> {
+    pub async fn embed_dir(&self, path: impl AsRef<Path>, model: &str) -> Result<(usize, usize, usize)> {
         let files: Vec<_> = glob(&path.as_ref().join("**/*.md").to_string_lossy())?
             .collect::<Result<Vec<_>, _>>()?;
         
@@ -117,17 +117,27 @@ impl<'a> Embedder<'a> {
                 .progress_chars("=>-")
         );
         
+        let mut dirs_with_files = std::collections::HashSet::new();
+        let mut total_tokens = 0;
+        
         for file_path in files.iter() {
             pb.set_message(format!("{}", file_path.display()));
-            self.embed_file(file_path, model).await?;
+            let tokens = self.embed_file(file_path, model).await?;
+            total_tokens += tokens;
+            
+            // Track directory containing this file
+            if let Some(parent) = file_path.parent() {
+                dirs_with_files.insert(parent.to_path_buf());
+            }
+            
             pb.inc(1);
         }
         
         pb.finish_with_message("Completed");
-        Ok(())
+        Ok((dirs_with_files.len(), total, total_tokens))
     }
 
-    pub async fn embed_file(&self, path: impl AsRef<Path>, model: &str) -> Result<()> {
+    pub async fn embed_file(&self, path: impl AsRef<Path>, model: &str) -> Result<usize> {
         let path_str = path.as_ref().to_string_lossy().to_string();
         let table_name = Self::get_table_name(model);
 
@@ -138,7 +148,7 @@ impl<'a> Embedder<'a> {
         // If table doesn't exist or file not embedded yet
         if count.unwrap_or(0) > 0 {
             debug!("File already embedded with model {}, skipping: {}", model, path_str);
-            return Ok(());
+            return Ok(0);
         }
 
         debug!("Embedding file: {}", &path_str);
@@ -148,6 +158,7 @@ impl<'a> Embedder<'a> {
 
         debug!("Split {} into {} chunks", &path_str, chunks.len());
 
+        let mut total_tokens = 0;
         for (i, chunk) in chunks.iter().enumerate() {
             // Skip chunks that are still too large (safety check)
             if chunk.content.len() > 4000 {
@@ -159,9 +170,11 @@ impl<'a> Embedder<'a> {
                 debug!("Skipping chunk {} from {} due to error: {}", i, &path_str, e);
                 continue;
             }
+            // Estimate tokens by character count
+            total_tokens += chunk.content.chars().count();
         }
 
-        Ok(())
+        Ok(total_tokens)
     }
 
     async fn embed_chunk(&self, file_path: &str, chunk: &crate::markdown::Chunk, model: &str) -> Result<()> {
